@@ -1,17 +1,17 @@
 package goty
 
 import (
-	"net"
-	"fmt"
-	"os"
 	"bufio"
+	"fmt"
+	"net"
+	"os"
 	"strings"
 )
 
 type IRCConn struct {
-	Sock *net.TCPConn
+	Sock        *net.TCPConn
 	Read, Write chan string
-	Closed chan bool
+	Closed      chan bool
 }
 
 func Dial(server, nick string) (*IRCConn, error) {
@@ -35,30 +35,32 @@ func (con *IRCConn) Connect(server, nick string) error {
 			w := bufio.NewWriter(con.Sock)
 
 			go func() {
-				for {	
+L:
+				for {
 					select {
 					case <-con.Closed:
 						fmt.Fprintf(os.Stderr, "goty: read closed\n")
-						break
+					       	break L 
 					default:
-					if str, err := r.ReadString(byte('\n')); err != nil {
-						fmt.Fprintf(os.Stderr, "goty: read: %s\n", err)
-						break
-					} else {
-						if strings.HasPrefix(str, "PING") {
-							con.Write <- "PONG" + str[4:len(str)-2]
+						if str, err := r.ReadString(byte('\n')); err != nil {
+							fmt.Fprintf(os.Stderr, "goty: read: %s\n", err)
+							break L
 						} else {
-							con.Read <- str[0:len(str)-2]
+							if strings.HasPrefix(str, "PING") {
+								con.Write <- "PONG" + str[4:len(str)-2]
+							} else {
+								con.Read <- str[0 : len(str)-2]
+							}
 						}
 					}
-					}
 				}
+				fmt.Println("done with send goroutine")
 			}()
 
 			go func() {
 				for {
-					str, closed := <-con.Write
-					if closed {
+					str, ok := <-con.Write
+					if ok == false {
 						fmt.Fprintf(os.Stderr, "goty: write closed\n")
 						break
 					}
