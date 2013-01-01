@@ -11,18 +11,20 @@ import (
 type IRCConn struct {
 	Sock *net.TCPConn
 	Read, Write chan string
+	Closed chan bool
 }
 
-func Dial(server, nick string) (*IRCConn, os.Error) {
+func Dial(server, nick string) (*IRCConn, error) {
 	read := make(chan string, 1000)
 	write := make(chan string, 1000)
-	con := &IRCConn{nil, read, write}
+	closed := make(chan bool)
+	con := &IRCConn{nil, read, write, closed}
 	err := con.Connect(server, nick)
 	return con, err
 }
 
-func (con *IRCConn) Connect(server, nick string) os.Error {
-	if raddr, err := net.ResolveTCPAddr(server); err != nil {
+func (con *IRCConn) Connect(server, nick string) error {
+	if raddr, err := net.ResolveTCPAddr("tcp", server); err != nil {
 		return err
 	} else {
 		if c, err := net.DialTCP("tcp", nil, raddr); err != nil {
@@ -33,13 +35,14 @@ func (con *IRCConn) Connect(server, nick string) os.Error {
 			w := bufio.NewWriter(con.Sock)
 
 			go func() {
-				for {
-					if closed(con.Read) {
+				for {	
+					select {
+					case <-con.Closed:
 						fmt.Fprintf(os.Stderr, "goty: read closed\n")
 						break
-					}
+					default:
 					if str, err := r.ReadString(byte('\n')); err != nil {
-						fmt.Fprintf(os.Stderr, "goty: read: %s\n", err.String())
+						fmt.Fprintf(os.Stderr, "goty: read: %s\n", err)
 						break
 					} else {
 						if strings.HasPrefix(str, "PING") {
@@ -48,18 +51,19 @@ func (con *IRCConn) Connect(server, nick string) os.Error {
 							con.Read <- str[0:len(str)-2]
 						}
 					}
+					}
 				}
 			}()
 
 			go func() {
 				for {
-					str := <-con.Write
-					if closed(con.Write) {
+					str, closed := <-con.Write
+					if closed {
 						fmt.Fprintf(os.Stderr, "goty: write closed\n")
 						break
 					}
 					if _, err := w.WriteString(str + "\r\n"); err != nil {
-						fmt.Fprintf(os.Stderr, "goty: write: %s\n", err.String())
+						fmt.Fprintf(os.Stderr, "goty: write: %s\n", err)
 						break
 					}
 					w.Flush()
@@ -73,8 +77,9 @@ func (con *IRCConn) Connect(server, nick string) os.Error {
 	return nil
 }
 
-func (con *IRCConn) Close() os.Error {
-	close(con.Read)
+func (con *IRCConn) Close() error {
+	con.Closed <- true
 	close(con.Write)
+	close(con.Read)
 	return con.Sock.Close()
 }

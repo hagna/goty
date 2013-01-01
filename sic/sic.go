@@ -15,14 +15,14 @@ func main () {
 	flag.Parse()
 
 	if con, err := goty.Dial(*server, *nick); err != nil {
-		fmt.Fprintf(os.Stderr, "goty: %s\n", err.String())
+		fmt.Fprintf(os.Stderr, "goty: %s\n", err)
 	} else {
 		in := bufio.NewReader(os.Stdin)
 
 		go func() {
 			for {
-				str := <-con.Read
-				if closed(con.Read) {
+				str, closed := <-con.Read
+				if closed {
 					break
 				}
 				fmt.Printf("<- %s\n", str)
@@ -31,7 +31,7 @@ func main () {
 
 		for {
 			if input, err := in.ReadString('\n'); err != nil {
-				fmt.Fprintf(os.Stderr, "goty: %s\n", err.String())
+				fmt.Fprintf(os.Stderr, "goty: %s\n", err)
 				break
 			} else {
 				fmt.Printf("-> %s", input)
@@ -39,7 +39,7 @@ func main () {
 			}
 		}
 		if err:= con.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "goty: %s\n", err.String())
+			fmt.Fprintf(os.Stderr, "goty: %s\n", err)
 		}
 	}
 }
